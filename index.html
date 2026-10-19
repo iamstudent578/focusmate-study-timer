@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FocusMate - 讀書專注計時與學習紀錄</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自訂字體與基礎樣式 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #F9FAF8; /* 米白/淺灰綠背景 */
+            color: #2D3748; /* 深灰文字 */
+        }
+
+        /* 隱藏數字輸入框的上下箭頭 */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        /* 平滑過渡效果 */
+        .transition-all {
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 300ms;
+        }
+
+        /* 簡單的淡入動畫 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+    <!-- 主容器 -->
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-lg w-full flex flex-col gap-6">
+        
+        <!-- 標題區 -->
+        <header class="text-center space-y-2">
+            <h1 class="text-3xl font-bold text-emerald-800 tracking-tight">FocusMate</h1>
+            <p class="text-emerald-600/80 font-medium">保持專注，紀錄你的每一步成長</p>
+        </header>
+
+        <!-- 計時區 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-emerald-100 p-6 flex flex-col gap-6">
+            
+            <!-- 輸入設定區 -->
+            <div class="space-y-4" id="settingsArea">
+                <!-- 科目輸入 -->
+                <div>
+                    <label for="subjectInput" class="block text-sm font-semibold text-gray-700 mb-1">學習科目 / 項目</label>
+                    <input type="text" id="subjectInput" placeholder="例如：資料結構、英文..." 
+                        class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-colors text-gray-800 placeholder-gray-400">
+                    <p id="subjectError" class="text-red-500 text-xs mt-1 hidden">請輸入科目名稱</p>
+                </div>
+
+                <!-- 時間設定 -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">專注時間 (分鐘)</label>
+                    <div class="flex gap-2 mb-2">
+                        <button type="button" onclick="setTimePreset(25)" class="flex-1 py-1.5 text-sm rounded-md border border-gray-200 bg-gray-50 hover:bg-emerald-50 text-gray-600 transition-colors" id="btn-preset-25">25 分鐘</button>
+                        <button type="button" onclick="setTimePreset(50)" class="flex-1 py-1.5 text-sm rounded-md border border-gray-200 bg-gray-50 hover:bg-emerald-50 text-gray-600 transition-colors" id="btn-preset-50">50 分鐘</button>
+                    </div>
+                    <div class="relative">
+                        <input type="number" id="timeInput" value="25" min="1" max="120"
+                            class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-colors text-gray-800 text-center text-lg font-medium">
+                    </div>
+                    <p id="timeError" class="text-red-500 text-xs mt-1 hidden">時間必須為 1 到 120 之間的整數</p>
+                </div>
+            </div>
+
+            <!-- 倒數顯示與狀態區 (修正排版，給予固定佔位空間) -->
+            <div class="relative flex justify-center items-center w-64 h-64 mx-auto my-4">
+                <!-- 圓形進度環 -->
+                <svg class="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 256 256">
+                    <circle cx="128" cy="128" r="120" stroke="currentColor" stroke-width="6" fill="transparent" class="text-gray-100" />
+                    <circle id="progressRing" cx="128" cy="128" r="120" stroke="currentColor" stroke-width="6" fill="transparent" stroke-linecap="round" class="text-emerald-500 transition-all duration-100 ease-linear" />
+                </svg>
+                
+                <!-- 狀態與時間文字 -->
+                <div class="relative z-10 flex flex-col items-center">
+                    <span id="statusText" class="text-sm font-bold mb-2 tracking-widest px-4 py-1 rounded-full transition-colors text-gray-500 bg-gray-100">準備開始</span>
+                    <div id="timeDisplay" class="text-7xl font-bold tracking-tighter text-gray-800 font-mono select-none">
+                        25:00
+                    </div>
+                </div>
+            </div>
+
+            <!-- 控制按鈕 -->
+            <div class="flex gap-3">
+                <button id="btnStart" onclick="handleStart()" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-lg shadow-sm shadow-emerald-200 transition-all active:scale-95">
+                    開始專注
+                </button>
+                <button id="btnPause" onclick="handlePause()" class="hidden flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-lg shadow-sm shadow-amber-200 transition-all active:scale-95">
+                    暫停
+                </button>
+                <button id="btnResume" onclick="handleResume()" class="hidden flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-sm shadow-emerald-200 transition-all active:scale-95">
+                    繼續
+                </button>
+                <button id="btnReset" onclick="handleReset()" class="hidden px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-lg transition-all active:scale-95">
+                    重設
+                </button>
+            </div>
+
+            <!-- 完成提示 (原為絕對定位覆蓋，現改為在計時器下方展開的靜態區塊) -->
+            <div id="completionToast" class="hidden flex flex-col items-center justify-center p-6 text-center animate-fade-in bg-emerald-50 border border-emerald-100 rounded-xl">
+                <div class="w-12 h-12 bg-emerald-200 text-emerald-700 rounded-full flex items-center justify-center mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-emerald-800 mb-2">專注完成！</h3>
+                <p class="text-sm text-emerald-700 mb-5">已自動為您保存學習紀錄。</p>
+                <button onclick="dismissToast()" class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium text-sm shadow-sm">
+                    繼續學習
+                </button>
+            </div>
+        </section>
+
+        <!-- 統計區 -->
+        <section class="grid grid-cols-2 gap-4">
+            <div class="bg-white rounded-xl shadow-sm border border-emerald-50 p-4 flex flex-col items-center justify-center">
+                <p class="text-sm text-gray-500 font-medium mb-1">今日完成次數</p>
+                <p class="text-3xl font-bold text-emerald-700" id="statCount">0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-emerald-50 p-4 flex flex-col items-center justify-center">
+                <p class="text-sm text-gray-500 font-medium mb-1">今日累積 (分鐘)</p>
+                <p class="text-3xl font-bold text-emerald-700" id="statMinutes">0</p>
+            </div>
+        </section>
+
+        <!-- 紀錄區 -->
+        <section class="bg-white rounded-xl shadow-sm border border-emerald-50 p-6 flex flex-col flex-grow">
+            <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-emerald-600" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+                </svg>
+                學習紀錄
+            </h2>
+            
+            <div id="recordsList" class="space-y-3 flex-grow overflow-y-auto max-h-[400px] pr-2">
+                <!-- 紀錄項目會由 JS 動態生成 -->
+            </div>
+
+            <div id="emptyState" class="hidden flex-col items-center justify-center py-8 text-gray-400">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p class="text-sm font-medium">尚無學習紀錄，開始你的第一次專注吧！</p>
+            </div>
+        </section>
+
+        <footer class="text-center text-xs text-gray-400 mt-4 pb-4">
+            資料儲存於您的瀏覽器中。清除瀏覽器資料將導致紀錄遺失。
+        </footer>
+
+    </main>
+
+    <script>
+        // --- 狀態與變數 ---
+        const STORAGE_KEY = 'focusmate_data_v1';
+        
+        let state = {
+            status: 'idle', // 'idle', 'running', 'paused'
+            subject: '',
+            setDurationMs: 25 * 60 * 1000,
+            remainingMs: 25 * 60 * 1000,
+            expectedEndTime: 0,
+            records: []
+        };
+
+        let timerInterval = null;
+
+        // --- DOM 元素 ---
+        const elements = {
+            subjectInput: document.getElementById('subjectInput'),
+            timeInput: document.getElementById('timeInput'),
+            timeDisplay: document.getElementById('timeDisplay'),
+            subjectError: document.getElementById('subjectError'),
+            timeError: document.getElementById('timeError'),
+            settingsArea: document.getElementById('settingsArea'),
+            
+            btnStart: document.getElementById('btnStart'),
+            btnPause: document.getElementById('btnPause'),
+            btnResume: document.getElementById('btnResume'),
+            btnReset: document.getElementById('btnReset'),
+            
+            statCount: document.getElementById('statCount'),
+            statMinutes: document.getElementById('statMinutes'),
+            
+            recordsList: document.getElementById('recordsList'),
+            emptyState: document.getElementById('emptyState'),
+            completionToast: document.getElementById('completionToast'),
+
+            statusText: document.getElementById('statusText'),
+            progressRing: document.getElementById('progressRing')
+        };
+
+        // --- 初始化 ---
+        function init() {
+            loadData();
+            updateUI();
+            
+            // 監聽時間輸入改變，即時更新顯示與進度環
+            elements.timeInput.addEventListener('input', () => {
+                if(state.status === 'idle') {
+                    const mins = parseInt(elements.timeInput.value);
+                    if (!isNaN(mins) && mins > 0 && mins <= 120) {
+                        state.setDurationMs = mins * 60 * 1000;
+                        state.remainingMs = state.setDurationMs;
+                        updateTimeDisplay();
+                        updateProgressVisual();
+                    }
+                }
+            });
+        }
+
+        // --- 計時器邏輯 ---
+        function handleStart() {
+            // 清理可能遺留的完成提示
+            dismissToast();
+
+            // 1. 驗證輸入
+            const subject = elements.subjectInput.value.trim();
+            const timeVal = parseInt(elements.timeInput.value);
+            let isValid = true;
+
+            if (!subject) {
+                elements.subjectError.classList.remove('hidden');
+                elements.subjectInput.classList.add('border-red-500');
+                isValid = false;
+            } else {
+                elements.subjectError.classList.add('hidden');
+                elements.subjectInput.classList.remove('border-red-500');
+            }
+
+            if (isNaN(timeVal) || timeVal < 1 || timeVal > 120) {
+                elements.timeError.classList.remove('hidden');
+                elements.timeInput.classList.add('border-red-500');
+                isValid = false;
+            } else {
+                elements.timeError.classList.add('hidden');
+                elements.timeInput.classList.remove('border-red-500');
+            }
+
+            if (!isValid) return;
+
+            // 2. 設定狀態
+            state.subject = subject;
+            if(state.status === 'idle') {
+                state.setDurationMs = timeVal * 60 * 1000;
+                state.remainingMs = state.setDurationMs;
+            }
+            
+            startTimerLoop();
+        }
+
+        function handlePause() {
+            if (state.status !== 'running') return;
+            
+            // 計算精確剩餘時間並暫停
+            state.remainingMs = state.expectedEndTime - Date.now();
+            if(state.remainingMs < 0) state.remainingMs = 0;
+            
+            state.status = 'paused';
+            clearInterval(timerInterval);
+            updateUI();
+        }
+
+        function handleResume() {
+            if (state.status !== 'paused') return;
+            startTimerLoop();
+        }
+
+        function handleReset() {
+            state.status = 'idle';
+            clearInterval(timerInterval);
+            // 恢復原本設定的時間
+            state.remainingMs = state.setDurationMs;
+            updateUI();
+        }
+
+        function startTimerLoop() {
+            state.status = 'running';
+            // 使用結束時間計算，避免 setInterval 延遲誤差
+            state.expectedEndTime = Date.now() + state.remainingMs;
+            
+            updateUI();
+            
+            // 頻繁檢查，但只在秒數改變時更新文字畫面，進度環則每 100ms 更新以保持滑順
+            let lastDisplaySeconds = Math.ceil(state.remainingMs / 1000);
+            
+            timerInterval = setInterval(() => {
+                const now = Date.now();
+                const remaining = state.expectedEndTime - now;
+                
+                if (remaining <= 0) {
+                    completeTimer();
+                } else {
+                    state.remainingMs = remaining;
+                    updateProgressVisual(); // 平滑更新進度環
+                    
+                    const currentDisplaySeconds = Math.ceil(remaining / 1000);
+                    if (currentDisplaySeconds !== lastDisplaySeconds) {
+                        updateTimeDisplay(); // 只在整秒變動時更新文字
+                        lastDisplaySeconds = currentDisplaySeconds;
+                    }
+                }
+            }, 100);
+        }
+
+        function completeTimer() {
+            clearInterval(timerInterval);
+            state.status = 'idle';
+            state.remainingMs = 0;
+            updateProgressVisual();
+            updateTimeDisplay();
+            
+            // 產生紀錄
+            const durationMinutes = Math.round(state.setDurationMs / 60000);
+            addRecord(state.subject, durationMinutes);
+            
+            // 恢復設定時間以便下次開始
+            state.remainingMs = state.setDurationMs;
+            
+            // 更新畫面與顯示完成提示
+            updateUI();
+            elements.completionToast.classList.remove('hidden');
+            
+            // 強制切換為「本次完成」狀態文字
+            updateStatusText(); 
+        }
+
+        // --- 快捷時間設定 ---
+        function setTimePreset(minutes) {
+            if(state.status !== 'idle') return;
+            elements.timeInput.value = minutes;
+            state.setDurationMs = minutes * 60 * 1000;
+            state.remainingMs = state.setDurationMs;
+            updateTimeDisplay();
+            updateProgressVisual();
+            elements.timeError.classList.add('hidden');
+            elements.timeInput.classList.remove('border-red-500');
+        }
+
+        function dismissToast() {
+            elements.completionToast.classList.add('hidden');
+            updateProgressVisual(); // 恢復滿圓進度
+            updateStatusText(); // 將狀態文字退回「準備開始」
+        }
+
+        // --- 資料與紀錄管理 ---
+        function addRecord(subject, duration) {
+            const newRecord = {
+                id: Date.now().toString(),
+                subject: subject,
+                duration: duration,
+                timestamp: Date.now()
+            };
+            
+            // 加入到陣列最前面 (最新)
+            state.records.unshift(newRecord);
+            saveData();
+            renderRecords();
+            renderStats();
+        }
+
+        // 新增：刪除單筆紀錄
+        function deleteRecord(id) {
+            const confirmDelete = confirm('確定要刪除這筆學習紀錄嗎？');
+            if (!confirmDelete) return;
+
+            // 過濾掉指定的紀錄
+            state.records = state.records.filter(record => record.id !== id);
+            
+            // 儲存並重新渲染畫面與統計
+            saveData();
+            renderRecords();
+            renderStats();
+        }
+
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+            } catch (e) {
+                console.error("儲存紀錄失敗", e);
+            }
+        }
+
+        function loadData() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                if (data) {
+                    state.records = JSON.parse(data);
+                }
+            } catch (e) {
+                console.error("讀取紀錄失敗", e);
+                state.records = [];
+            }
+            renderRecords();
+            renderStats();
+        }
+
+        // --- 畫面渲染邏輯 ---
+        function updateUI() {
+            updateTimeDisplay();
+            updateStatusText();
+            updateProgressVisual();
+            
+            // 根據狀態切換輸入框鎖定與按鈕顯示
+            const isIdle = state.status === 'idle';
+            const isRunning = state.status === 'running';
+            const isPaused = state.status === 'paused';
+
+            // 鎖定/解鎖輸入
+            elements.subjectInput.disabled = !isIdle;
+            elements.timeInput.disabled = !isIdle;
+            
+            if (!isIdle) {
+                elements.settingsArea.classList.add('opacity-50', 'pointer-events-none');
+            } else {
+                elements.settingsArea.classList.remove('opacity-50', 'pointer-events-none');
+            }
+
+            // 按鈕顯示邏輯
+            elements.btnStart.classList.toggle('hidden', !isIdle);
+            elements.btnPause.classList.toggle('hidden', !isRunning);
+            elements.btnResume.classList.toggle('hidden', !isPaused);
+            elements.btnReset.classList.toggle('hidden', isIdle);
+        }
+
+        function updateStatusText() {
+            let statusStr = "準備開始";
+            let statusColorClasses = "text-gray-500 bg-gray-100";
+
+            if (state.status === 'running') {
+                statusStr = "專注中";
+                statusColorClasses = "text-emerald-600 bg-emerald-50";
+            } else if (state.status === 'paused') {
+                statusStr = "已暫停";
+                statusColorClasses = "text-amber-600 bg-amber-50";
+            } else if (state.status === 'idle') {
+                // 如果完成提示窗還在，顯示「本次完成」
+                if (!elements.completionToast.classList.contains('hidden')) {
+                    statusStr = "本次完成";
+                    statusColorClasses = "text-blue-600 bg-blue-50";
+                }
+            }
+
+            elements.statusText.textContent = statusStr;
+            elements.statusText.className = `text-sm font-bold mb-2 tracking-widest px-4 py-1 rounded-full transition-colors ${statusColorClasses}`;
+        }
+
+        function updateProgressVisual() {
+            // 半徑 120 的圓周長 = 2 * PI * 120 ≒ 753.98
+            const circumference = 2 * Math.PI * 120;
+            const total = state.setDurationMs > 0 ? state.setDurationMs : 1; 
+            
+            // 計算剩餘時間的百分比 (0 到 1)
+            const percentage = Math.max(0, Math.min(1, state.remainingMs / total));
+            
+            // 計算 dashoffset：滿圓時 offset 為 0，歸零時 offset 等於圓周長
+            const offset = circumference - (percentage * circumference);
+            
+            elements.progressRing.style.strokeDasharray = `${circumference} ${circumference}`;
+            elements.progressRing.style.strokeDashoffset = offset;
+        }
+
+        function updateTimeDisplay() {
+            // 將毫秒轉換為 MM:SS，無條件進位秒數確保剛開始時顯示完整時間
+            const totalSeconds = Math.ceil(state.remainingMs / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            
+            const formattedMin = String(minutes).padStart(2, '0');
+            const formattedSec = String(seconds).padStart(2, '0');
+            
+            elements.timeDisplay.textContent = `${formattedMin}:${formattedSec}`;
+            
+            // 更新網頁標題
+            if (state.status === 'running') {
+                document.title = `${formattedMin}:${formattedSec} - FocusMate`;
+            } else {
+                document.title = `FocusMate - 讀書專注計時與學習紀錄`;
+            }
+        }
+
+        // 使用本機時間判斷是否為今天 (已加入跨日修正)
+        function isRecordFromToday(timestamp) {
+            const recordDate = new Date(timestamp);
+            const today = new Date();
+            
+            return recordDate.getFullYear() === today.getFullYear() &&
+                   recordDate.getMonth() === today.getMonth() &&
+                   recordDate.getDate() === today.getDate();
+        }
+
+        function renderStats() {
+            let count = 0;
+            let minutes = 0;
+
+            state.records.forEach(record => {
+                if (isRecordFromToday(record.timestamp)) {
+                    count++;
+                    minutes += record.duration;
+                }
+            });
+
+            elements.statCount.textContent = count;
+            elements.statMinutes.textContent = minutes;
+        }
+
+        function renderRecords() {
+            elements.recordsList.innerHTML = '';
+            
+            if (state.records.length === 0) {
+                elements.emptyState.classList.remove('hidden');
+                elements.emptyState.classList.add('flex');
+            } else {
+                elements.emptyState.classList.add('hidden');
+                elements.emptyState.classList.remove('flex');
+                
+                state.records.forEach(record => {
+                    const dateObj = new Date(record.timestamp);
+                    const isRecToday = isRecordFromToday(record.timestamp);
+                    
+                    // 格式化日期時間
+                    const dateStr = isRecToday ? '今天' : `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+                    const timeStr = dateObj.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+
+                    const card = document.createElement('div');
+                    card.className = 'bg-gray-50 border border-gray-100 rounded-lg p-3 flex justify-between items-center animate-fade-in';
+                    
+                    // 修改了這裡的 HTML 結構，加入刪除按鈕
+                    card.innerHTML = `
+                        <div class="flex flex-col flex-1 overflow-hidden pr-2">
+                            <span class="font-bold text-gray-800 truncate">${escapeHTML(record.subject)}</span>
+                            <span class="text-xs text-gray-500">${dateStr} ${timeStr}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-sm font-bold shadow-sm whitespace-nowrap">
+                                ${record.duration} min
+                            </div>
+                            <button onclick="deleteRecord('${record.id}')" class="text-gray-400 hover:text-red-500 transition-colors p-1" title="刪除紀錄">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                    elements.recordsList.appendChild(card);
+                });
+            }
+        }
+
+        // 基本的 XSS 防護
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
+
+        // 啟動應用程式
+        window.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
